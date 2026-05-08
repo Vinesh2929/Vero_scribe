@@ -15,7 +15,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Once the server starts, open [http://localhost:3000](http://localhost:3000).
 
 On first run, the app creates `data/db.json` and seeds it with three physicians and roughly 120 available slots across the next five business days. No database setup, no Docker, no configuration needed.
 
