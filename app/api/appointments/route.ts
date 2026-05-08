@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAppointments, createAppointment } from "@/lib/store";
 
-export async function GET() {
-  return NextResponse.json(getAppointments());
+export async function GET(req: NextRequest) {
+  const email = req.nextUrl.searchParams.get("email")?.trim().toLowerCase();
+  const all = getAppointments();
+  if (email) {
+    return NextResponse.json(all.filter((a) => a.patientEmail.toLowerCase() === email));
+  }
+  return NextResponse.json(all);
 }
 
 export async function POST(req: NextRequest) {

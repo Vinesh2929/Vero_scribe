@@ -33,15 +33,14 @@ export default function Home() {
           >
             Book an appointment in minutes.
           </h1>
-          <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.6 }}>
-            Choose a physician, pick an available time, and submit your details.
-            No phone calls, no hold music.
-          </p>
         </div>
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 56 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 56, flexWrap: "wrap", justifyContent: "center" }}>
           <Link href="/book" className="btn btn-primary">
             Book an appointment
+          </Link>
+          <Link href="/my-appointments" className="btn btn-outline">
+            My appointments
           </Link>
           <Link href="/admin" className="btn btn-outline">
             Admin dashboard

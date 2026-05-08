@@ -122,7 +122,10 @@ export function getPhysician(id: string): Physician | undefined {
 
 export function getAvailableSlots(physicianId: string): TimeSlot[] {
   const db = readDB();
-  return db.slots.filter((s) => s.physicianId === physicianId && s.available);
+  const today = new Date().toISOString().split("T")[0];
+  return db.slots.filter(
+    (s) => s.physicianId === physicianId && s.available && s.date >= today
+  );
 }
 
 export function getSlot(slotId: string): TimeSlot | undefined {

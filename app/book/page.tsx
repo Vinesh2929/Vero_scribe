@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Physician, TimeSlot } from "@/lib/store";
+import { formatDate, formatTime } from "@/lib/utils";
 
 type Step = "physician" | "slot" | "details" | "confirm" | "success";
+type StringField = "patientName" | "patientEmail" | "patientPhone" | "reasonForVisit";
 
 interface BookingState {
   physician: Physician | null;
@@ -21,15 +23,17 @@ const REASON_MIN = 10;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric" });
-}
+const TAG_PALETTES = [
+  { bg: "#EFF4FF", color: "#2D52CC" }, // blue
+  { bg: "#F3F0FF", color: "#5B3FC8" }, // indigo
+  { bg: "#EDFAF5", color: "#157A52" }, // teal-green
+  { bg: "#FFF7ED", color: "#96500E" }, // amber
+];
 
-function formatTime(t: string): string {
-  const [h, m] = t.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  return `${h > 12 ? h - 12 : h || 12}:${m.toString().padStart(2, "0")} ${ampm}`;
+function tagStyle(specialty: string): { background: string; color: string } {
+  const hash = specialty.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const { bg, color } = TAG_PALETTES[hash % TAG_PALETTES.length];
+  return { background: bg, color };
 }
 
 function formatPhone(raw: string): string {
@@ -108,12 +112,14 @@ function StepIndicator({ current }: { current: Step }) {
 function PhysicianStep({ onSelect }: { onSelect: (p: Physician) => void }) {
   const [physicians, setPhysicians] = useState<Physician[]>([]);
   const [loading,    setLoading]    = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [selecting,  setSelecting]  = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/physicians")
-      .then((r) => r.json())
-      .then((d) => { setPhysicians(d); setLoading(false); });
+      .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
+      .then((d) => { setPhysicians(d); setLoading(false); })
+      .catch(() => { setFetchError(true); setLoading(false); });
   }, []);
 
   async function handleSelect(p: Physician) {
@@ -130,7 +136,11 @@ function PhysicianStep({ onSelect }: { onSelect: (p: Physician) => void }) {
         <div className="page-subtitle">Select a provider to view their availability.</div>
       </div>
 
-      {loading ? (
+      {fetchError ? (
+        <div className="error-banner">
+          Could not load physicians. Please refresh the page.
+        </div>
+      ) : loading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {[84, 100, 84].map((h, i) => <Skeleton key={i} height={h} />)}
         </div>
@@ -152,7 +162,7 @@ function PhysicianStep({ onSelect }: { onSelect: (p: Physician) => void }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <span style={{ fontWeight: 500, fontSize: 14 }}>{p.name}</span>
-                  <span className="tag">{p.specialty}</span>
+                  <span className="tag" style={tagStyle(p.specialty)}>{p.specialty}</span>
                 </div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
                   {p.bio}
@@ -185,27 +195,26 @@ function formatDayLabel(dateStr: string): { weekday: string; day: number; month:
 function SlotStep({
   physician,
   onSelect,
-  onBack,
 }: {
   physician: Physician;
   onSelect: (s: TimeSlot) => void;
-  onBack: () => void;
 }) {
   const [slots,         setSlots]         = useState<TimeSlot[]>([]);
   const [loading,       setLoading]       = useState(true);
+  const [fetchError,    setFetchError]    = useState(false);
   const [activeDate,    setActiveDate]    = useState<string | null>(null);
   const [selectedSlot,  setSelectedSlot]  = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/slots?physicianId=${physician.id}`)
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
       .then((d: TimeSlot[]) => {
         setSlots(d);
         setLoading(false);
-        // auto-select first available date
         const first = d[0]?.date ?? null;
         if (first) setActiveDate(first);
-      });
+      })
+      .catch(() => { setFetchError(true); setLoading(false); });
   }, [physician.id]);
 
   const byDate: Record<string, TimeSlot[]> = {};
@@ -234,7 +243,11 @@ function SlotStep({
         </div>
       </div>
 
-      {loading ? (
+      {fetchError ? (
+        <div className="error-banner">
+          Could not load availability. Please go back and try again.
+        </div>
+      ) : loading ? (
         <>
           {/* Day pill skeletons */}
           <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
@@ -346,8 +359,7 @@ function SlotStep({
         </>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 24, justifyContent: "flex-end" }}>
-        <button className="btn btn-outline" onClick={onBack}>Back</button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
         <button
           className="btn btn-primary"
           disabled={!selectedSlot}
@@ -369,12 +381,10 @@ function DetailsStep({
   booking,
   onChange,
   onNext,
-  onBack,
 }: {
   booking: BookingState;
-  onChange: (k: keyof BookingState, v: string) => void;
+  onChange: (k: StringField, v: string) => void;
   onNext: () => void;
-  onBack: () => void;
 }) {
   const [touched,   setTouched]   = useState<Set<string>>(new Set());
   const [attempted, setAttempted] = useState(false);
@@ -506,8 +516,7 @@ function DetailsStep({
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 24, justifyContent: "flex-end" }}>
-        <button className="btn btn-outline" onClick={onBack}>Back</button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
         <button className="btn btn-primary" onClick={handleNext}>
           Review booking
         </button>
@@ -521,13 +530,11 @@ function DetailsStep({
 function ConfirmStep({
   booking,
   onConfirm,
-  onBack,
   submitting,
   errorMsg,
 }: {
   booking: BookingState;
   onConfirm: () => void;
-  onBack: () => void;
   submitting: boolean;
   errorMsg: string | null;
 }) {
@@ -567,8 +574,7 @@ function ConfirmStep({
         <div className="error-banner" style={{ marginTop: 16 }}>{errorMsg}</div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 24, justifyContent: "flex-end" }}>
-        <button className="btn btn-outline" onClick={onBack} disabled={submitting}>Back</button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
         <button
           className="btn btn-primary"
           onClick={onConfirm}
@@ -613,6 +619,7 @@ function SuccessStep({ booking }: { booking: BookingState }) {
         is <span className="badge badge-pending">pending</span>. The clinic will reach out to confirm shortly.
       </p>
       <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 32 }}>
+        <Link href="/my-appointments" className="btn btn-primary">View my appointments</Link>
         <Link href="/book" className="btn btn-outline">Book another</Link>
         <Link href="/" className="btn btn-ghost">Home</Link>
       </div>
@@ -648,7 +655,7 @@ export default function BookPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function updateField(k: keyof BookingState, v: string) {
+  function updateField(k: StringField, v: string) {
     setBooking((b) => ({ ...b, [k]: v }));
   }
 
@@ -692,6 +699,24 @@ export default function BookPage() {
       <main className="container" style={{ paddingTop: 40, paddingBottom: 80 }}>
         {step !== "success" && <StepIndicator current={step} />}
 
+        {/* Back link — always at the top so it's visible regardless of form length */}
+        {step !== "success" && (
+          step === "physician" ? (
+            <Link href="/" className="back-link">← Home</Link>
+          ) : (
+            <button
+              className="back-link"
+              onClick={() => {
+                if (step === "slot")    retreat("physician");
+                if (step === "details") retreat("slot");
+                if (step === "confirm") { setErrorMsg(null); retreat("details"); }
+              }}
+            >
+              ← Back
+            </button>
+          )
+        )}
+
         <div key={step} className={direction === "forward" ? "slide-forward" : "slide-backward"}>
           {step === "physician" && (
             <PhysicianStep
@@ -702,7 +727,6 @@ export default function BookPage() {
             <SlotStep
               physician={booking.physician}
               onSelect={(s) => { setBooking((b) => ({ ...b, slot: s })); advance("details"); }}
-              onBack={() => retreat("physician")}
             />
           )}
           {step === "details" && (
@@ -710,14 +734,12 @@ export default function BookPage() {
               booking={booking}
               onChange={updateField}
               onNext={() => advance("confirm")}
-              onBack={() => retreat("slot")}
             />
           )}
           {step === "confirm" && (
             <ConfirmStep
               booking={booking}
               onConfirm={handleConfirm}
-              onBack={() => { setErrorMsg(null); retreat("details"); }}
               submitting={submitting}
               errorMsg={errorMsg}
             />
