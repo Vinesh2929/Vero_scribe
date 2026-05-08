@@ -9,8 +9,8 @@ A patient appointment booking flow built with Next.js 15, TypeScript, and a mini
 **Prerequisites:** Node.js 18+
 
 ```bash
-git clone <repo-url>
-cd vero-booking
+git clone https://github.com/Vinesh2929/Vero_scribe.git
+cd Vero_scribe
 npm install
 npm run dev
 ```
