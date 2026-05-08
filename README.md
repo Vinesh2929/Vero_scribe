@@ -1,6 +1,6 @@
 # Vero Booking
 
-A patient appointment booking flow built with Next.js 15, TypeScript, and a minimal CSS design system. No external services, no environment variables — just clone and run.
+A patient appointment booking flow built with Next.js 15, TypeScript, and a minimal CSS design system. No external services, no environment variables, just clone and run.
 
 ---
 
@@ -17,7 +17,7 @@ npm run dev
 
 Once the server starts, open [http://localhost:3000](http://localhost:3000).
 
-On first run, the app creates `data/db.json` and seeds it with three physicians and roughly 120 available slots across the next five business days. No database setup, no Docker, no configuration needed.
+On first run, the app seeds three physicians and roughly 120 available slots across the next five business days. No database setup, no Docker, no configuration needed.
 
 ---
 
@@ -25,26 +25,20 @@ On first run, the app creates `data/db.json` and seeds it with three physicians 
 
 ### Patient booking (`/book`)
 
-A four-step wizard that walks a patient through choosing a physician, picking a time, entering their details, and reviewing before submitting.
-
-- Step 1 picks a physician from card-style listings showing name, specialty, and bio
-- Step 2 shows availability grouped by date with morning/afternoon sections — nothing is reserved until the final submit, so there's no orphaned slot problem
-- Step 3 collects name, email, phone (optional), and reason for visit with inline validation on blur
-- Step 4 is a full review before confirming — if someone else books the same slot in the meantime, the API returns a 409 and the patient sees a clear error without losing their other form data
-
-Appointments always start as `pending`. The success screen tells the patient exactly that and links to the lookup page.
+A four-step wizard: choose a physician, pick a time slot, enter details, then review and confirm. Inline validation on all required fields. If a slot gets taken between selection and submission, the API returns a 409 and the patient sees a clear error without losing their form data. All bookings start as `pending`.
 
 ### Appointment lookup (`/my-appointments`)
 
-Patients can enter their email to see all their bookings and current statuses. No account needed — email as a lookup key is the right tradeoff at this stage, and it's how most clinic confirmation flows work before a full auth system is in place.
+Patients enter their email to view all their bookings and current statuses. No account needed.
 
 ### Admin dashboard (`/admin`)
 
-- Stat cards at the top double as filter buttons (total / pending / confirmed / cancelled)
-- Text search filters across patient name, email, and physician name in real time
-- Sortable table with patient contact, physician, appointment date/time, booking timestamp, reason, and status
-- Per-row status dropdown — fully keyboard-navigable (arrow keys, Enter, Escape) — with optimistic updates that roll back on failure
-- Cancelling an appointment frees the slot back for patients to book; re-confirming re-locks it
+- Stat cards at the top filter by status (total / pending / confirmed / cancelled)
+- Text search across patient name, email, and physician
+- Sortable table with patient contact, physician, appointment time, booking timestamp, reason, and status
+- Per-row status dropdown with keyboard navigation (arrow keys, Enter, Escape)
+- Cancelling a booking frees the slot; re-confirming re-locks it
+- Status updates are applied optimistically and roll back on failure
 
 ### API
 
@@ -60,36 +54,36 @@ Patients can enter their email to see all their bookings and current statuses. N
 
 ## Key decisions
 
-**JSON file store over SQLite.** For a work sample with no infrastructure expectations, a JSON file is honest and practical. It's human-readable for review, works on any OS, and requires no compilation step. More importantly, `lib/store.ts` is the only file that knows about persistence — switching to Prisma is a one-file change.
+**JSON file store.** No infrastructure needed for a work sample. `lib/store.ts` is the only file that knows about persistence, so swapping to Prisma is a one-file change.
 
-**Slots as first-class entities.** Rather than storing availability as a list on the physician, each slot is its own record with an `available` boolean. This makes the availability query trivial, the double-booking check a single line, and the cancel/re-confirm logic obvious. It also maps cleanly to how real calendar APIs model free/busy time.
+**Slots as first-class entities.** Each slot is its own record with an `available` boolean. This makes the double-booking check trivial and the cancel/re-confirm logic obvious.
 
-**Pending by default.** In real clinical workflows, staff usually need to verify a few things before a booking is confirmed — physician availability, patient history, insurance. Starting everything as `pending` reflects that reality and sets the right expectation with patients from the start.
+**Pending by default.** Clinical workflows usually require staff to verify something before confirming. Starting as `pending` reflects that and sets the right expectation with patients upfront.
 
-**No page-level navigation inside the wizard.** The booking flow is a single client component. Each step is a local state change, not a route. This keeps the experience snappy without pulling in a state management library for what is essentially a four-screen form.
+**Single client component for the wizard.** Each step is a local state change, not a route change. No state management library needed for a four-screen form.
 
-**No auth, intentionally.** The brief explicitly excluded it. For the patient lookup I used email as a lookup key rather than building a session system — appropriate for this scope, and consistent with how many clinics handle unverified confirmations before an account exists.
+**No auth.** The brief excluded it. Email as a lookup key for the patient portal is appropriate for this scope.
 
 ---
 
-## What I'd improve with more time
+## What I would improve with more time
 
-1. **Real database** — Prisma + SQLite locally, Postgres in production. The store interface is already abstracted so this is a clean swap.
+1. **Real database** - Prisma + SQLite locally, Postgres in production. The store interface is already abstracted.
 
-2. **Soft slot reservation** — right now nothing stops two patients from selecting the same slot simultaneously; one gets a 409 at the end. A better experience is to soft-reserve a slot the moment it's selected (a Redis TTL of 5–10 minutes with a visible countdown), then release it if the patient abandons the form. This is how flight and concert booking works and it eliminates the surprise failure entirely.
+2. **Soft slot reservation** - Reserve a slot the moment it is selected with a short TTL and a visible countdown, then release it if the patient abandons. Eliminates the surprise 409 entirely.
 
-3. **Waitlist** — when a patient's preferred slot gets taken, let them join a waitlist for that physician and date. If a cancellation frees a slot, automatically notify the next person in line. No-show and cancellation rates are high in healthcare; a waitlist turns that into recovered capacity rather than lost appointments.
+3. **Waitlist** - Let patients join a waitlist when a slot is full. Auto-notify the next person when a cancellation frees it up. Cancellation rates in healthcare are high and a waitlist turns that into recovered capacity.
 
-4. **Status change audit trail** — every status transition should be logged with a timestamp and actor (patient or staff). This matters practically for HIPAA-adjacent accountability, and it makes the appointment detail view much more useful: staff can see exactly when something was confirmed or cancelled and by whom.
+4. **Status change audit trail** - Log every status transition with a timestamp and actor. Important for accountability and makes the admin view significantly more useful.
 
-5. **Appointment types with variable duration** — not all appointments are 30 minutes. A new patient intake, a follow-up, and an urgent visit all have different durations and different prep requirements. The slot model supports this already; it just needs a `type` and `durationMinutes` field and the slot generation logic updated to block the right number of intervals.
+5. **Appointment types with variable duration** - Not all visits are 30 minutes. The slot model already supports this; it just needs a type and duration field.
 
-6. **Recurring appointment booking** — for patients managing chronic conditions, booking a single follow-up at a time is friction. A "book next 4 follow-ups every 2 weeks" flow would be genuinely useful and is a natural fit given the slot model.
+6. **Recurring appointments** - For patients managing chronic conditions, booking one follow-up at a time is unnecessary friction.
 
-7. **Calendar export** — a confirmed appointment should be one click to add to Google Calendar or Apple Calendar. Generating an `.ics` file server-side is straightforward and it's one of those small things patients actually notice.
+7. **Calendar export** - One-click `.ics` export for confirmed appointments to add to Google or Apple Calendar.
 
-8. **Physician-managed availability** — right now slots are seeded once. A real system needs recurring weekly schedules, the ability to block dates (vacation, conference), and ideally a two-way sync with the physician's existing calendar.
+8. **Physician-managed availability** - Slots are seeded once on first run. A real system needs recurring schedules and the ability to block dates.
 
-9. **Testing** — the store functions are pure and easy to unit test. A Playwright e2e test covering the booking happy path, the slot-conflict edge case, and the admin status update would give real confidence before any deployment.
+9. **Testing** - Unit tests for the store module and a Playwright e2e test covering the booking flow and slot-conflict edge case.
 
-10. **Mobile admin layout** — the table scrolls horizontally on small screens. Clinic staff checking bookings on their phone would be better served by a stacked card layout.
+10. **Mobile admin layout** - The table scrolls horizontally on small screens. A card layout would work better for clinic staff on mobile.
